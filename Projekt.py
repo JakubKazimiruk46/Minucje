@@ -119,76 +119,52 @@ def calculate_crossing_number(image):
     rows, cols = image.shape
     minuciae = []  # Lista do przechowywania wykrytych minucji
 
-    # Zamiana wartości 255 na 0, a 0 na 1 (linie: 1, tło: 0)
-    binary_image = (image == 0).astype(np.uint8)
-
     for row in range(1, rows - 1):
         for col in range(1, cols - 1):
-            if binary_image[row, col] == 1:  # Tylko piksele należące do linii (1)
+            if image[row, col] == 0:  # Tylko piksele należące do linii (czarne)
                 # Sąsiedztwo 3x3 wokół piksela
-                neighborhood = binary_image[row - 1:row + 2, col - 1:col + 2]
+                neighborhood = image[row - 1:row + 2, col - 1:col + 2]
+                neighbors = neighborhood.flatten()[[1, 0, 3, 6, 7, 8, 5, 2, 1]]  # ODWROTNIE do wskazówek zegara
 
-                # Indeksy sąsiadów w kolejności zgodnej z maską CN
-                cells = [(-1, 0), (-1, 1), (0, 1), (1, 1),
-                         (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0)]
+                # Obliczanie CN
+                cn = 0.5 * np.sum(np.abs(neighbors[:-1] - neighbors[1:]))
 
-                # Pobieranie wartości sąsiadów
-                values = [binary_image[row + l, col + k] for k, l in cells]
+                # Debug: wyświetl CN i sąsiedztwo
+                print(f"Pixel ({row}, {col}), CN: {cn}, Neighborhood:\n{neighborhood}")
 
-                # Debugowanie sąsiadów
-                print(f"Pixel ({row}, {col}), Values: {values}")
+                # Interpretacja CN
+                if cn == 1:
+                    minuciae.append((row, col, "Ending"))
+                elif cn == 3:
+                    minuciae.append((row, col, "Bifurcation"))
+                elif cn == 4:
+                    minuciae.append((row, col, "Crossing"))
+                elif cn == 0:
+                    minuciae.append((row, col, "Crossing"))
 
-                # Liczenie przejść z 0 do 1
-                crossings = sum((values[i] == 0 and values[i + 1] == 1) for i in range(len(values) - 1))
-
-                # Debugowanie liczby przejść
-                print(f"Pixel ({row}, {col}), Crossings: {crossings}")
-
-                # Interpretacja CN zgodnie ze specyfikacją
-                if crossings == 0:
-                    minuciae.append((row, col, "Pojedynczy punkt"))
-                elif crossings == 1:
-                    minuciae.append((row, col, "Zakończenie krawędzi"))
-                elif crossings == 2:
-                    pass  # Kontynuacja krawędzi, pomijamy
-                elif crossings == 3:
-                    minuciae.append((row, col, "Rozwidlenie"))
-                elif crossings == 4:
-                    minuciae.append((row, col, "Skrzyżowanie"))
 
     print(f"Total minutiae detected: {len(minuciae)}")
     return minuciae
 
-
 # Funkcja do wizualizacji minucji na obrazie
 def visualize_minutiae(image, minuciae):
+    # Konwertujemy obraz do formatu BGR, aby móc narysować kolorowe kropki
     result_img = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+
+    # Iterujemy przez listę minucji
     for row, col, mtype in minuciae:
-        if mtype == "Zakończenie krawędzi":
-            # Czerwony trójkąt dla zakończeń krawędzi
-            points = np.array([[col, row - 5], [col - 5, row + 5], [col + 5, row + 5]], np.int32)
-            cv2.polylines(result_img, [points], isClosed=True, color=(0, 0, 255), thickness=1)
-        elif mtype == "Rozwidlenie":
-            # Zielone kółko dla rozwidleń
-            cv2.circle(result_img, (col, row), 1, (0, 255, 0), thickness=1)
-        elif mtype == "Skrzyżowanie":
-            # Niebieski kwadrat dla skrzyżowań
-            top_left = (col - 4, row - 4)
-            bottom_right = (col + 4, row + 4)
-            cv2.rectangle(result_img, top_left, bottom_right, (255, 0, 0), thickness=1)
-        elif mtype == "Pojedynczy punkt":
-            # Fioletowy romb dla pojedynczych punktów
-            points = np.array([[col, row - 5], [col - 5, row], [col, row + 5], [col + 5, row]], np.int32)
-            cv2.polylines(result_img, [points], isClosed=True, color=(255, 0, 255), thickness=1)
+        # Rysujemy czerwoną kropkę (BGR: (0, 0, 255))
+        cv2.circle(result_img, (col, row), 1, (33, 55, 255), -1)  # Promień 5, wypełniona kropka
+
     return result_img
 
-
 def display_image_with_minutiae(original_image, minuciae):
+    # Nakładanie czerwonych punktów na obraz w skali szarości
     result_img = visualize_minutiae(original_image, minuciae)
     img_tk = ImageTk.PhotoImage(image=Image.fromarray(result_img))
     panel.config(image=img_tk)
     panel.image = img_tk
-    panel.title = "Minutiae detected"
+    panel.title = "Minutiae with Red Dots"
 
 
 # Funkcja GUI do detekcji minucji
