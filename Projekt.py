@@ -4,6 +4,27 @@ from tkinter.messagebox import showinfo
 import cv2
 import numpy as np
 from PIL import Image, ImageTk
+from tkinter import Canvas
+
+
+zoom_scale = 1.0
+
+def zoom(event):
+    global zoom_scale, img_tk_scaled
+    # Skaluje obraz w zależności od kierunku przewijania (zoom in/out)
+    if event.delta > 0:  # Scroll up - przybliżenie
+        zoom_scale *= 1.1
+    elif event.delta < 0:  # Scroll down - oddalenie
+        zoom_scale /= 1.1
+
+    # Skaluje obraz
+    scaled_image = cv2.resize(minuciae_img, None, fx=zoom_scale, fy=zoom_scale, interpolation=cv2.INTER_LINEAR)
+    img_tk_scaled = ImageTk.PhotoImage(image=Image.fromarray(scaled_image))
+
+    # Wyświetla skalowany obraz
+    panel.config(image=img_tk_scaled)
+    panel.image = img_tk_scaled
+
 
 def load_image():
     global img
@@ -117,6 +138,7 @@ def display_image(cv_image, title):
 # Funkcja do obliczania Crossing Number (CN)
 def calculate_crossing_number(image):
     rows, cols = image.shape
+    global minuciae
     minuciae = []  # Lista do przechowywania wykrytych minucji
 
     # Zamiana wartości 255 na 0, a 0 na 1 (linie: 1, tło: 0)
@@ -182,14 +204,48 @@ def visualize_minutiae(image, minuciae):
             cv2.polylines(result_img, [points], isClosed=True, color=(255, 0, 255), thickness=1)
     return result_img
 
+def visualize_minutiae_colors(image, minuciae):
+    result_img = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    for row, col, mtype in minuciae:
+        if mtype == "Zakończenie krawędzi":
+            # Czerwony piksel dla zakończeń krawędzi
+            result_img[row, col] = (0, 0, 255)
+        elif mtype == "Rozwidlenie":
+            # Zielony piksel dla rozwidleń
+            cv2.circle(result_img, (col, row), 5, (0, 255, 0), thickness=1)
+        elif mtype == "Skrzyżowanie":
+            # Niebieski piksel dla skrzyżowań
+            result_img[row, col] = (255, 0, 0)
+        elif mtype == "Pojedynczy punkt":
+            # Fioletowy piksel dla pojedynczych punktów
+            result_img[row, col] = (255, 0, 255)
+    return result_img
+
+def visualize_selected_minutiae(image, minuciae, selected_type):
+    result_img = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    for row, col, mtype in minuciae:
+        if mtype == selected_type:
+            if mtype == "Zakończenie krawędzi":
+                result_img[row, col] = (0, 0, 255)
+            elif mtype == "Rozwidlenie":
+                cv2.circle(result_img, (col, row), 3, (0, 255, 0), thickness=1)
+            elif mtype == "Skrzyżowanie":
+                result_img[row, col] = (255, 0, 0)
+            elif mtype == "Pojedynczy punkt":
+                result_img[row, col] = (255, 0, 255)
+    return result_img
 
 def display_image_with_minutiae(original_image, minuciae):
-    result_img = visualize_minutiae(original_image, minuciae)
-    img_tk = ImageTk.PhotoImage(image=Image.fromarray(result_img))
-    panel.config(image=img_tk)
-    panel.image = img_tk
-    panel.title = "Minutiae detected"
+    global minuciae_img, img_tk_scaled
+    # Nakładanie minucji na obraz
+    result_img = visualize_minutiae_colors(original_image, minuciae)
+    minuciae_img = result_img  # Zachowaj obraz do zoomowania
 
+    # Inicjalny obraz
+    img_tk_scaled = ImageTk.PhotoImage(image=Image.fromarray(result_img))
+    panel.config(image=img_tk_scaled)
+    panel.image = img_tk_scaled
+    panel.title = "Image with Minuties"
 
 # Funkcja GUI do detekcji minucji
 def detect_minutiae():
@@ -201,6 +257,14 @@ def detect_minutiae():
     minuciae = calculate_crossing_number(skeleton_img)
     minuciae_img = visualize_minutiae(skeleton_img, minuciae)
     display_image_with_minutiae(skeleton_img, minuciae)
+
+def show_ending_minutiae():
+    global skeleton_img, minuciae
+    if skeleton_img is None:
+        showinfo("Error", "Skeletonize the image first!")
+        return
+    result_img = visualize_selected_minutiae(skeleton_img, minuciae, "Zakończenie krawędzi")
+    display_image(result_img, "Zakończenie krawędzi")
 
 
 # Tworzenie GUI
@@ -214,6 +278,7 @@ skeleton_img = None
 frame = tk.Frame(root)
 frame.pack()
 
+
 Button(frame, text="Load Image", command=load_image).pack(side=tk.LEFT, padx=10, pady=5)
 Button(frame, text="Preprocess Image", command=apply_preprocessing).pack(side=tk.LEFT, padx=10, pady=5)
 Button(frame, text="Skeletonize Image", command=skeletonize_image).pack(side=tk.LEFT, padx=10, pady=5)
@@ -221,5 +286,6 @@ Button(frame, text="Detect Minutiae", command=detect_minutiae).pack(side=tk.LEFT
 
 panel = Label(root)
 panel.pack()
+panel.bind("<MouseWheel>", zoom)
 
 root.mainloop()
